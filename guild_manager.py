@@ -3,7 +3,7 @@ import aiohttp
 from urllib.parse import quote
 
 
-async def auser_profile(name):
+async def agw2mists_user_profile(name):
     user_name_quoted = quote(name)
     USER_PROFILE_URL = f"https://api.gw2mists.com/profile/{user_name_quoted}"
     headers = {
@@ -23,11 +23,11 @@ async def auser_profile(name):
 
 
 async def auser_profiles(names):
-    tasks = [auser_profile(name) for name in names]
+    tasks = [agw2mists_user_profile(name) for name in names]
     return await asyncio.gather(*tasks)
 
 
-async def aguild_profile(name):
+async def agw2mists_guild_profile(name):
     guild_name_quoted = quote(name)
     GUILD_PROFILE_URL = f"https://api.gw2mists.com/guilds/{guild_name_quoted}"
     headers = {
@@ -41,7 +41,7 @@ async def aguild_profile(name):
 
 
 GUILD_NAME = "Dodge Right I Mean"
-guild_profile = asyncio.run(aguild_profile(GUILD_NAME))
+guild_profile = asyncio.run(agw2mists_guild_profile(GUILD_NAME))
 
 print("*** total member count ***")
 print(guild_profile["member_count"])
