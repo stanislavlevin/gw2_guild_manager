@@ -18,6 +18,7 @@ async def agw2mists_user_profile(name):
                 profile["name"] = name
                 return profile
             except aiohttp.client_exceptions.ContentTypeError:
+                print(f"error on getting user profile: {name}")
                 print(await response.text())
                 raise
 
