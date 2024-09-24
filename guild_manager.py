@@ -164,6 +164,10 @@ alliance_guild_id = config[ALLIANCE_GUILD_NAME]["gid"]
 alliance_profile_gw2 = guild_profiles_gw2[alliance_guild_id]
 alliance_member_names = {x["name"] for x in alliance_profile_gw2}
 
+print("*** total alliance member count (gw2 api) ***")
+print(len(alliance_member_names))
+print()
+
 not_alliance_members = guild_member_names - alliance_member_names
 print(
     "*** guild members that didn't join alliance "
