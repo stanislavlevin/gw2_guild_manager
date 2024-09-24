@@ -3,6 +3,11 @@ import aiohttp
 from urllib.parse import quote
 
 
+# https://docs.aiohttp.org/en/stable/client_advanced.html#limiting-connection-pool-size
+# default: 100
+OPEN_CONNECTIONS_LIMIT = 50
+
+
 async def agw2mists_user_profile(name):
     user_name_quoted = quote(name)
     USER_PROFILE_URL = f"https://api.gw2mists.com/profile/{user_name_quoted}"
@@ -11,8 +16,9 @@ async def agw2mists_user_profile(name):
         "origin": "https://gw2mists.com",
         "accept": "application/json",
     }
+    connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
     async with aiohttp.ClientSession(
-        headers=headers, raise_for_status=True
+        connector=connector, headers=headers, raise_for_status=True
     ) as session:
         async with session.get(USER_PROFILE_URL) as response:
             profile = await response.json()
@@ -33,8 +39,9 @@ async def agw2mists_guild_profile(name):
         "origin": "https://gw2mists.com",
         "accept": "application/json",
     }
+    connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
     async with aiohttp.ClientSession(
-        headers=headers, raise_for_status=True
+        connector=connector, headers=headers, raise_for_status=True
     ) as session:
         async with session.get(GUILD_PROFILE_URL) as response:
             return await response.json()
