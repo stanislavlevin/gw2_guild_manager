@@ -11,16 +11,13 @@ async def agw2mists_user_profile(name):
         "origin": "https://gw2mists.com",
         "accept": "application/json",
     }
-    async with aiohttp.ClientSession(headers=headers) as session:
+    async with aiohttp.ClientSession(
+        headers=headers, raise_for_status=True
+    ) as session:
         async with session.get(USER_PROFILE_URL) as response:
-            try:
-                profile = await response.json()
-                profile["name"] = name
-                return profile
-            except aiohttp.client_exceptions.ContentTypeError:
-                print(f"error on getting user profile: {name}")
-                print(await response.text())
-                raise
+            profile = await response.json()
+            profile["name"] = name
+            return profile
 
 
 async def auser_profiles(names):
@@ -36,7 +33,9 @@ async def agw2mists_guild_profile(name):
         "origin": "https://gw2mists.com",
         "accept": "application/json",
     }
-    async with aiohttp.ClientSession(headers=headers) as session:
+    async with aiohttp.ClientSession(
+        headers=headers, raise_for_status=True
+    ) as session:
         async with session.get(GUILD_PROFILE_URL) as response:
             return await response.json()
 
