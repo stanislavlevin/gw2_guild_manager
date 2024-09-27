@@ -168,6 +168,15 @@ print("*** total alliance member count (gw2 api) ***")
 print(len(alliance_member_names))
 print()
 
+unregistered_not_alliance_members = not_registered_names - alliance_member_names
+print(
+    "*** not registered guild members that didn't join alliance "
+    f"(total: {len(unregistered_not_alliance_members)}) ***"
+)
+for name in sorted(unregistered_not_alliance_members):
+    print(name)
+print()
+
 not_alliance_members = guild_member_names - alliance_member_names
 print(
     "*** guild members that didn't join alliance "
