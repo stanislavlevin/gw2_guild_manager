@@ -1,6 +1,7 @@
 import asyncio
 import aiohttp
 import configparser
+import copy
 from urllib.parse import quote
 
 
@@ -9,63 +10,185 @@ from urllib.parse import quote
 OPEN_CONNECTIONS_LIMIT = 50
 
 
-async def agw2mists_user_profile(name):
-    user_name_quoted = quote(name)
-    USER_PROFILE_URL = f"https://api.gw2mists.com/profile/{user_name_quoted}"
-    headers = {
+class GW2MISTS_GUILD:
+    API_ENDPOINT = "https://api.gw2mists.com"
+    API_HEADERS = {
         "referer": "https://gw2mists.com",
         "origin": "https://gw2mists.com",
         "accept": "application/json",
     }
-    connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
-    async with aiohttp.ClientSession(
-        connector=connector, headers=headers, raise_for_status=True
-    ) as session:
-        async with session.get(USER_PROFILE_URL) as response:
-            profile = await response.json()
-            profile["name"] = name
-            return profile
+
+    def __init__(self, guild_name):
+        self.guild_name = guild_name
+        self._profile = None
+        self._unregistered_members = None
+        self._team_id = None
+        self._wrongteam_members = None
+        self._registered_members = None
+        self._currentmatch_members = None
+        self._members_profiles = None
+        self._inactive_members = None
+        self._members = None
+
+    async def amember_profile(self, name):
+        user_name_quoted = quote(name)
+        user_profile_url = f"{self.API_ENDPOINT}/profile/{user_name_quoted}"
+        connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
+        async with aiohttp.ClientSession(
+            connector=connector,
+            headers=self.API_HEADERS,
+            raise_for_status=True,
+        ) as session:
+            async with session.get(user_profile_url) as response:
+                profile = await response.json()
+                profile["name"] = name
+                return profile
+
+    async def amember_profiles(self, names):
+        tasks = [self.amember_profile(name) for name in names]
+        return await asyncio.gather(*tasks)
+
+    async def aguild_profile(self):
+        guild_name_quoted = quote(self.guild_name)
+        guild_profile_url = f"{self.API_ENDPOINT}/guilds/{guild_name_quoted}"
+        connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
+        async with aiohttp.ClientSession(
+            connector=connector,
+            headers=self.API_HEADERS,
+            raise_for_status=True,
+        ) as session:
+            async with session.get(guild_profile_url) as response:
+                return await response.json()
+
+    @property
+    def profile(self):
+        if self._profile is None:
+            self._profile = copy.deepcopy(asyncio.run(self.aguild_profile()))
+        return self._profile
+
+    @property
+    def unregistered_members(self):
+        if self._unregistered_members is None:
+            self._unregistered_members = frozenset(
+                (
+                    x["name"]
+                    for x in self.profile["member"]
+                    if x["registered"] == 0
+                )
+            )
+        return self._unregistered_members
+
+    @property
+    def members(self):
+        if self._members is None:
+            self._members = frozenset(
+                (x["name"] for x in self.profile["member"])
+            )
+        return self._members
+
+    @property
+    def team_id(self):
+        if self._team_id is None:
+            self._team_id = self.profile["team_id"]
+        return self._team_id
+
+    @property
+    def wrongteam_members(self):
+        if self._wrongteam_members is None:
+            self._wrongteam_members = frozenset(
+                {
+                    x["name"]
+                    for x in self.profile["member"]
+                    if x["team_id"] != self.team_id
+                } - self.unregistered_members
+            )
+        return self._wrongteam_members
+
+    @property
+    def registered_members(self):
+        if self._registered_members is None:
+            self._registered_members = frozenset(
+                (
+                    x["name"]
+                    for x in self.profile["member"]
+                    if x["registered"] == 1
+                )
+            )
+        return self._registered_members
+
+    @property
+    def currentmatch_members(self):
+        if self._currentmatch_members is None:
+            self._currentmatch_members = frozenset(
+                self.registered_members - self.wrongteam_members
+            )
+        return self._currentmatch_members
+
+    @property
+    def members_profiles(self):
+        if self._members_profiles is None:
+            self._members_profiles = asyncio.run(
+                self.amember_profiles(self.currentmatch_members)
+            )
+        return self._members_profiles
+
+    @property
+    def inactive_members(self):
+        if self._inactive_members is None:
+            self._inactive_members = frozenset(
+                (
+                    x["name"]
+                    for x in self.members_profiles
+                    if x["stats"]["kills"] == 0
+                )
+            )
+        return self._inactive_members
 
 
-async def auser_profiles(names):
-    tasks = [agw2mists_user_profile(name) for name in names]
-    return await asyncio.gather(*tasks)
-
-
-async def agw2mists_guild_profile(name):
-    guild_name_quoted = quote(name)
-    guild_profile_url = f"https://api.gw2mists.com/guilds/{guild_name_quoted}"
-    headers = {
-        "referer": "https://gw2mists.com",
-        "origin": "https://gw2mists.com",
+class GW2_GUILD:
+    API_ENDPOINT = "https://api.guildwars2.com"
+    API_HEADERS = {
         "accept": "application/json",
     }
-    connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
-    async with aiohttp.ClientSession(
-        connector=connector, headers=headers, raise_for_status=True
-    ) as session:
-        async with session.get(guild_profile_url) as response:
-            return await response.json()
 
+    def __init__(self, guild_name):
+        self.guild_name = guild_name
 
-async def agw2_guild_profile(gid, api_key):
-    guild_profile_url = f"https://api.guildwars2.com/v2/guild/{gid}/members"
-    headers = {
-        "authorization": f"Bearer {api_key}",
-        "accept": "application/json",
-    }
-    connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
-    async with aiohttp.ClientSession(
-        connector=connector, headers=headers, raise_for_status=True
-    ) as session:
-        async with session.get(guild_profile_url) as response:
-            profile = await response.json()
-            return (gid, profile)
+        config = configparser.ConfigParser()
+        config.read("settings.ini")
+        if self.guild_name not in config:
+            raise ValueError(
+                f"not configured guild: {self.guild_name}, "
+                "see settings.ini.in for details"
+            )
+        self.gid = config[self.guild_name]["gid"]
+        self.api_key = config[self.guild_name]["api_key"]
+        self.API_HEADERS["authorization"] =  f"Bearer {self.api_key}"
+        self._profile = None
+        self._members = None
 
+    async def aguild_profile(self):
+        guild_profile_url = f"{self.API_ENDPOINT}/v2/guild/{self.gid}/members"
+        connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
+        async with aiohttp.ClientSession(
+            connector=connector,
+            headers=self.API_HEADERS,
+            raise_for_status=True,
+        ) as session:
+            async with session.get(guild_profile_url) as response:
+                return await response.json()
 
-async def agw2_guild_profiles(guilds):
-    tasks = [agw2_guild_profile(*guild) for guild in guilds]
-    return await asyncio.gather(*tasks)
+    @property
+    def profile(self):
+        if self._profile is None:
+            self._profile = copy.deepcopy(asyncio.run(self.aguild_profile()))
+        return self._profile
+
+    @property
+    def members(self):
+        if self._members is None:
+            self._members = frozenset((x["name"] for x in self.profile))
+        return self._members
 
 
 GUILD_NAME = "Dodge Right I Mean"
@@ -79,96 +202,53 @@ print(ALLIANCE_GUILD_NAME)
 print()
 
 print("*** public data (gw2mists) ***")
-guild_profile = asyncio.run(agw2mists_guild_profile(GUILD_NAME))
+gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
 
 print("*** total guild member count (gw2mists) ***")
-print(guild_profile["member_count"])
+print(gw2mist_guild.profile["member_count"])
 print()
 
-not_registered_names = {
-    x["name"] for x in guild_profile["member"] if x["registered"] == 0
-}
 print(
     "*** guild members not registered on gw2mists.com "
-    f"(total: {len(not_registered_names)}) ***"
+    f"(total: {len(gw2mist_guild.unregistered_members)}) ***"
 )
-for name in sorted(not_registered_names):
+for name in sorted(gw2mist_guild.unregistered_members):
     print(name)
 print()
-
-guild_team_id = guild_profile["team_id"]
-wrong_team_names = {
-    x["name"] for x in guild_profile["member"] if x["team_id"] != guild_team_id
-}
-wrong_team_names = wrong_team_names - not_registered_names
 
 print(
-    f"*** guild members on wrong team (total: {len(wrong_team_names)}) ***"
+    "*** guild members on wrong team "
+    f"(total: {len(gw2mist_guild.wrongteam_members)}) ***"
 )
-for name in sorted(wrong_team_names):
+for name in sorted(gw2mist_guild.wrongteam_members):
     print(name)
 print()
 
-registered_names = {
-    x["name"] for x in guild_profile["member"] if x["registered"] == 1
-}
-match_names = registered_names - wrong_team_names
-
-user_profiles = asyncio.run(auser_profiles(match_names))
-
-inactive_names = {
-    x["name"] for x in user_profiles if x["stats"]["kills"] == 0
-}
 print(
     "*** guild members having 0 kills during current match "
-    f"(total: {len(inactive_names)}) ***"
+    f"(total: {len(gw2mist_guild.inactive_members)}) ***"
 )
 
-for name in sorted(inactive_names):
-    print(name)
-print()
-
-nothaving_wvw_names = {
-    x["name"] for x in user_profiles if "wvw_guild" not in x
-}
-print(
-    "*** guild members not having wvw permission in gw2mists API key "
-    f"(total: {len(nothaving_wvw_names)}) ***"
-)
-for name in sorted(nothaving_wvw_names):
+for name in sorted(gw2mist_guild.inactive_members):
     print(name)
 print()
 
 print(
     "*** private data (gw2, requires guild and alliance leader's API KEY) ***"
 )
-config = configparser.ConfigParser()
-config.read("settings.ini")
-
-guilds_ids = (
-    (config[guild_name]["gid"], config[guild_name]["api_key"])
-    for guild_name in (GUILD_NAME, ALLIANCE_GUILD_NAME)
-)
-
-guild_profiles_gw2 = asyncio.run(agw2_guild_profiles(guilds_ids))
-guild_profiles_gw2 = {k:v for k,v in guild_profiles_gw2}
-guild_id = config[GUILD_NAME]["gid"]
-guild_profile_gw2 = guild_profiles_gw2[guild_id]
-guild_member_names = {x["name"] for x in guild_profile_gw2}
-
+gw2_guild = GW2_GUILD(GUILD_NAME)
 print("*** total guild member count (gw2 api) ***")
-print(len(guild_member_names))
+print(len(gw2_guild.members))
 print()
 
-alliance_guild_id = config[ALLIANCE_GUILD_NAME]["gid"]
-alliance_profile_gw2 = guild_profiles_gw2[alliance_guild_id]
-alliance_member_names = {x["name"] for x in alliance_profile_gw2}
-
+gw2_alliance = GW2_GUILD(ALLIANCE_GUILD_NAME)
 print("*** total alliance member count (gw2 api) ***")
-print(len(alliance_member_names))
+print(len(gw2_alliance.members))
 print()
 
-unregistered_not_alliance_members = not_registered_names - alliance_member_names
+unregistered_not_alliance_members = (
+    gw2mist_guild.unregistered_members - gw2_alliance.members
+)
 print(
     "*** not registered guild members that didn't join alliance "
     f"(total: {len(unregistered_not_alliance_members)}) ***"
@@ -177,16 +257,18 @@ for name in sorted(unregistered_not_alliance_members):
     print(name)
 print()
 
-not_alliance_members = guild_member_names - alliance_member_names
+gw2_not_alliance_members = gw2_guild.members - gw2_alliance.members
 print(
     "*** guild members that didn't join alliance "
-    f"(total: {len(not_alliance_members)}) ***"
+    f"(total: {len(gw2_not_alliance_members)}) ***"
 )
-for name in sorted(not_alliance_members):
+for name in sorted(gw2_not_alliance_members):
     print(name)
 print()
 
-inactive_and_not_alliance_names = inactive_names & not_alliance_members
+inactive_and_not_alliance_names = (
+    gw2mist_guild.inactive_members & gw2_not_alliance_members
+)
 print(
     "*** inactive guild members that didn't join alliance "
     f"(total: {len(inactive_and_not_alliance_names)}) ***"
