@@ -139,7 +139,7 @@ class GW2MISTS_GUILD:
                 (
                     x["name"]
                     for x in self.members_profiles
-                    if x["stats"]["kills"] == 0
+                    if x["stats"]["kills"] < 100
                 )
             )
         return self._inactive_members
@@ -225,7 +225,7 @@ for name in sorted(gw2mist_guild.wrongteam_members):
 print()
 
 print(
-    "*** guild members having 0 kills during current match "
+    "*** guild members having less than 100 kills during current match "
     f"(total: {len(gw2mist_guild.inactive_members)}) ***"
 )
 
