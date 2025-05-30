@@ -2,12 +2,22 @@ import asyncio
 import aiohttp
 import configparser
 import copy
+import logging
+import sys
+from datetime import datetime, UTC
+from pathlib import Path
 from urllib.parse import quote
+
+
+logger = logging.getLogger(Path(__file__).stem)
 
 
 # https://docs.aiohttp.org/en/stable/client_advanced.html#limiting-connection-pool-size
 # default: 100
 OPEN_CONNECTIONS_LIMIT = 50
+GUILD_NAME = "Dodge Right I Mean"
+ALLIANCE_GUILD_NAME = "Glub Glub Glub Glub Glub"
+INACTIVE_PLAYER_KILLS = 100
 
 
 class GW2MISTS_GUILD:
@@ -139,7 +149,7 @@ class GW2MISTS_GUILD:
                 (
                     x["name"]
                     for x in self.members_profiles
-                    if x["stats"]["kills"] < 100
+                    if x["stats"]["kills"] < INACTIVE_PLAYER_KILLS
                 )
             )
         return self._inactive_members
@@ -191,89 +201,113 @@ class GW2_GUILD:
         return self._members
 
 
-GUILD_NAME = "Dodge Right I Mean"
-print("*** guild name ***")
-print(GUILD_NAME)
-print()
+def setup_logging(logfile, *, verbose=False):
+    if verbose:
+        log_level = logging.DEBUG
+        log_format = "%(levelname)-8s : %(name)s : %(message)s"
+    else:
+        log_level = logging.INFO
+        log_format = "%(levelname)-8s : %(message)s"
 
-ALLIANCE_GUILD_NAME = "Glub Glub Glub Glub Glub"
-print("*** alliance guild name ***")
-print(ALLIANCE_GUILD_NAME)
-print()
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(log_level)
+    ch.setFormatter(logging.Formatter(log_format))
 
-print("*** public data (gw2mists) ***")
-gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
+    handlers = (ch,)
+    if logfile:
+        fh = logging.FileHandler(logfile, mode="w")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter("%(levelname)-8s : %(message)s"))
+        handlers = (*handlers, fh)
 
-print("*** total guild member count (gw2mists) ***")
-print(gw2mist_guild.profile["member_count"])
-print()
+    logging.basicConfig(
+        handlers=handlers,
+        level=logging.DEBUG,
+    )
 
-print(
-    "*** guild members not registered on gw2mists.com "
-    f"(total: {len(gw2mist_guild.unregistered_members)}) ***"
-)
-for name in sorted(gw2mist_guild.unregistered_members):
-    print(name)
-print()
 
-print(
-    "*** guild members on wrong team "
-    f"(total: {len(gw2mist_guild.wrongteam_members)}) ***"
-)
-for name in sorted(gw2mist_guild.wrongteam_members):
-    print(name)
-print()
+def report_members(prefix, *, message, members):
+    fmt = f"{prefix}: {message}: %d"
+    if (len_members := len(members)):
+        logging.warning(
+            fmt + "\n%s",
+            len_members,
+            "\n".join((f"-> {m}" for m in sorted(members))),
+        )
+    else:
+        logging.info(fmt, len_members)
 
-print(
-    "*** guild members having less than 100 kills during current match "
-    f"(total: {len(gw2mist_guild.inactive_members)}) ***"
-)
 
-for name in sorted(gw2mist_guild.inactive_members):
-    print(name)
-print()
+def main():
+    now = datetime.now(UTC).isoformat()
+    logfile = f"report_{now}.log"
+    setup_logging(logfile)
+    logging.info("report time: %s", now)
+    logging.info("guild name: %s", GUILD_NAME)
+    logging.info("alliance guild name: %s", ALLIANCE_GUILD_NAME)
 
-print(
-    "*** private data (gw2, requires guild and alliance leader's API KEY) ***"
-)
-gw2_guild = GW2_GUILD(GUILD_NAME)
-print("*** total guild member count (gw2 api) ***")
-print(len(gw2_guild.members))
-print()
+    gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
+    logging_gw2mists_prefix = "gw2mists"
 
-gw2_alliance = GW2_GUILD(ALLIANCE_GUILD_NAME)
-print("*** total alliance member count (gw2 api) ***")
-print(len(gw2_alliance.members))
-print()
+    logging.info(
+        f"{logging_gw2mists_prefix}: total guild member number: %d",
+        gw2mist_guild.profile["member_count"],
+    )
 
-unregistered_not_alliance_members = (
-    gw2mist_guild.unregistered_members - gw2_alliance.members
-)
-print(
-    "*** not registered guild members that didn't join alliance "
-    f"(total: {len(unregistered_not_alliance_members)}) ***"
-)
-for name in sorted(unregistered_not_alliance_members):
-    print(name)
-print()
+    for msg, mbs in (
+        (
+            "guild members not registered on gw2mists.com",
+            gw2mist_guild.unregistered_members,
+        ),
+        ("guild members on wrong team", gw2mist_guild.wrongteam_members),
+        (
+            f"guild members having less than {INACTIVE_PLAYER_KILLS} kills "
+            "during current match",
+            gw2mist_guild.inactive_members,
+        ),
+    ):
+        report_members(
+            logging_gw2mists_prefix,
+            message=msg,
+            members=mbs,
+        )
 
-gw2_not_alliance_members = gw2_guild.members - gw2_alliance.members
-print(
-    "*** guild members that didn't join alliance "
-    f"(total: {len(gw2_not_alliance_members)}) ***"
-)
-for name in sorted(gw2_not_alliance_members):
-    print(name)
-print()
+    logging_gw2_prefix = "gw2"
+    gw2_guild = GW2_GUILD(GUILD_NAME)
+    logging.info(
+        f"{logging_gw2_prefix}: total guild member number: %d",
+        len(gw2_guild.members),
+    )
 
-inactive_and_not_alliance_names = (
-    gw2mist_guild.inactive_members & gw2_not_alliance_members
-)
-print(
-    "*** inactive guild members that didn't join alliance "
-    f"(total: {len(inactive_and_not_alliance_names)}) ***"
-)
+    gw2_alliance = GW2_GUILD(ALLIANCE_GUILD_NAME)
+    logging.info(
+        f"{logging_gw2_prefix}: total alliance member number: %d",
+        len(gw2_alliance.members),
+    )
 
-for name in sorted(inactive_and_not_alliance_names):
-    print(name)
-print()
+
+    for msg, mbs in (
+        (
+            "not registered guild members that didn't join alliance",
+            gw2mist_guild.unregistered_members-gw2_alliance.members,
+        ),
+        (
+            "guild members that didn't join alliance",
+            gw2_not_alliance_members:=gw2_guild.members-gw2_alliance.members,
+        ),
+        (
+            "inactive guild members that didn't join alliance",
+            gw2mist_guild.inactive_members&gw2_not_alliance_members,
+        )
+    ):
+        report_members(
+            logging_gw2_prefix,
+            message=msg,
+            members=mbs,
+        )
+
+    logger.info("logfile to upload: %s", logfile)
+
+
+if __name__ == "__main__":
+    main()
