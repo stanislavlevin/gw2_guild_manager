@@ -176,6 +176,7 @@ class GW2_GUILD:
         self.API_HEADERS["authorization"] =  f"Bearer {self.api_key}"
         self._profile = None
         self._members = None
+        self._wvw_members = None
 
     async def aguild_profile(self):
         guild_profile_url = f"{self.API_ENDPOINT}/v2/guild/{self.gid}/members"
@@ -199,6 +200,14 @@ class GW2_GUILD:
         if self._members is None:
             self._members = frozenset((x["name"] for x in self.profile))
         return self._members
+
+    @property
+    def wvw_members(self):
+        if self._wvw_members is None:
+            self._wvw_members = frozenset(
+                (x["name"] for x in self.profile if x["wvw_member"])
+            )
+        return self._wvw_members
 
 
 def setup_logging(logfile, *, verbose=False):
@@ -298,7 +307,16 @@ def main():
         (
             "inactive guild members that didn't join alliance",
             gw2mist_guild.inactive_members&gw2_not_alliance_members,
-        )
+        ),
+        (
+            f"guild members that chose [{GUILD_NAME}] as wvw guild "
+            "instead of alliance",
+            gw2_guild.wvw_members,
+        ),
+        (
+            "guild members that didn't choose alliance as wvw guild",
+            gw2_guild.members-(gw2_guild.members&gw2_alliance.wvw_members),
+        ),
     ):
         report_members(
             logging_gw2_prefix,
