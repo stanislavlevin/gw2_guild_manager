@@ -256,6 +256,7 @@ def main():
     logging.info("alliance guild name: %s", ALLIANCE_GUILD_NAME)
 
     gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
+    gw2mist_alliance = GW2MISTS_GUILD(ALLIANCE_GUILD_NAME)
     logging_gw2mists_prefix = "gw2mists"
 
     logging.info(
@@ -273,6 +274,11 @@ def main():
             f"guild members having less than {INACTIVE_PLAYER_KILLS} kills "
             "during current match",
             gw2mist_guild.inactive_members,
+        ),
+        (
+            f"alliance members having less than {INACTIVE_PLAYER_KILLS} kills "
+            "during current match",
+            gw2mist_alliance.inactive_members,
         ),
     ):
         report_members(
