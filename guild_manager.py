@@ -138,7 +138,7 @@ class GW2MISTS_GUILD:
     def members_profiles(self):
         if self._members_profiles is None:
             self._members_profiles = asyncio.run(
-                self.amember_profiles(self.currentmatch_members)
+                self.amember_profiles(self.registered_members)
             )
         return self._members_profiles
 
