@@ -17,7 +17,7 @@ logger = logging.getLogger(Path(__file__).stem)
 OPEN_CONNECTIONS_LIMIT = 50
 GUILD_NAME = "Dodge Right I Mean"
 ALLIANCE_GUILD_NAME = "Glub Glub Glub Glub Glub"
-INACTIVE_PLAYER_KILLS = 100
+INACTIVE_PLAYER_KILLS = 1000
 
 
 class GW2MISTS_GUILD:
