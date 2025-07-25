@@ -18,6 +18,13 @@ OPEN_CONNECTIONS_LIMIT = 50
 GUILD_NAME = "Dodge Right I Mean"
 ALLIANCE_GUILD_NAME = "Glub Glub Glub Glub Glub"
 INACTIVE_PLAYER_KILLS = 1000
+TOP_STATS_MEMBERS = 10
+MEMBER_STATS_LIST = (
+    "kills",
+    "captured_targets",
+    "defended_targets",
+    "killed_dolyaks",
+)
 
 
 class GW2MISTS_GUILD:
@@ -39,6 +46,7 @@ class GW2MISTS_GUILD:
         self._members_profiles = None
         self._inactive_members = None
         self._members = None
+        self._top_week = None
 
     async def amember_profile(self, session, *, name):
         url = quote(f"/profile/{name}")
@@ -156,6 +164,25 @@ class GW2MISTS_GUILD:
         return self._inactive_members
 
 
+    def _sorted_members(self, stat, *, reverse):
+        return sorted(
+            (
+                (name, profile["stats"][stat])
+                for name, profile in self.members_profiles.items()
+            ),
+            key=lambda prof: prof[1],
+            reverse=reverse,
+        )[:TOP_STATS_MEMBERS]
+
+    @property
+    def top_week(self):
+        if self._top_week is None:
+            self._top_week = {}
+            for stat in MEMBER_STATS_LIST:
+                self._top_week[stat] = self._sorted_members(stat, reverse=True)
+        return self._top_week
+
+
 class GW2_GUILD:
     API_ENDPOINT = "https://api.guildwars2.com"
     API_HEADERS = {
@@ -248,6 +275,16 @@ def report_members(prefix, *, message, members):
         logging.info(fmt, len_members)
 
 
+def report_members_stats(prefix, *, stats):
+    for stat, members in stats.items():
+        logging.info(
+            "%s (%s):\n%s",
+            prefix,
+            stat,
+            "\n".join((f"-> {m[0]}: {m[1]}" for m in members)),
+        )
+
+
 def main():
     now = datetime.now(UTC).isoformat()
     logfile = f"report_{now}.log"
@@ -330,6 +367,12 @@ def main():
             message=msg,
             members=mbs,
         )
+
+    for msg, stats in (
+        (f"gw2mists: guild top {TOP_STATS_MEMBERS} members", gw2mist_guild.top_week),
+        (f"gw2mists: alliance top {TOP_STATS_MEMBERS} members", gw2mist_alliance.top_week),
+    ):
+        report_members_stats(msg, stats=stats)
 
     logger.info("logfile to upload: %s", logfile)
 
