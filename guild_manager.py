@@ -40,23 +40,23 @@ class GW2MISTS_GUILD:
         self._inactive_members = None
         self._members = None
 
-    async def amember_profile(self, name):
-        user_name_quoted = quote(name)
-        user_profile_url = f"{self.API_ENDPOINT}/profile/{user_name_quoted}"
+    async def amember_profile(self, session, *, name):
+        url = quote(f"/profile/{name}")
+        async with session.get(url) as response:
+            profile = await response.json()
+            profile["name"] = name
+            return profile
+
+    async def amember_profiles(self, names):
         connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
         async with aiohttp.ClientSession(
+            self.API_ENDPOINT,
             connector=connector,
             headers=self.API_HEADERS,
             raise_for_status=True,
         ) as session:
-            async with session.get(user_profile_url) as response:
-                profile = await response.json()
-                profile["name"] = name
-                return profile
-
-    async def amember_profiles(self, names):
-        tasks = [self.amember_profile(name) for name in names]
-        return await asyncio.gather(*tasks)
+            tasks = [self.amember_profile(session, name=name) for name in names]
+            return await asyncio.gather(*tasks)
 
     async def aguild_profile(self):
         guild_name_quoted = quote(self.guild_name)
