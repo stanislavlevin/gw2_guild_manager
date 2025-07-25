@@ -137,21 +137,22 @@ class GW2MISTS_GUILD:
     @property
     def members_profiles(self):
         if self._members_profiles is None:
-            self._members_profiles = asyncio.run(
-                self.amember_profiles(self.registered_members)
-            )
+            self._members_profiles = {
+                x["name"]: x
+                for x in asyncio.run(
+                    self.amember_profiles(self.registered_members)
+                )
+            }
         return self._members_profiles
 
     @property
     def inactive_members(self):
         if self._inactive_members is None:
-            self._inactive_members = frozenset(
-                (
-                    x["name"]
-                    for x in self.members_profiles
-                    if x["stats"]["kills"] < INACTIVE_PLAYER_KILLS
-                )
-            )
+            self._inactive_members = {
+                name: {"kills": kills}
+                for name, profile in self.members_profiles.items()
+                if (kills:=profile["stats"]["kills"]) < INACTIVE_PLAYER_KILLS
+            }
         return self._inactive_members
 
 
@@ -273,12 +274,12 @@ def main():
         (
             f"guild members having less than {INACTIVE_PLAYER_KILLS} kills "
             "during current match",
-            gw2mist_guild.inactive_members,
+            set(f"{k} ({v['kills']})" for k, v in gw2mist_guild.inactive_members.items()),
         ),
         (
             f"alliance members having less than {INACTIVE_PLAYER_KILLS} kills "
             "during current match",
-            gw2mist_alliance.inactive_members,
+            set(f"{k} ({v['kills']})" for k, v in gw2mist_alliance.inactive_members.items()),
         ),
     ):
         report_members(
@@ -312,7 +313,7 @@ def main():
         ),
         (
             "inactive guild members that didn't join alliance",
-            gw2mist_guild.inactive_members&gw2_not_alliance_members,
+            set(gw2mist_guild.inactive_members)&gw2_not_alliance_members,
         ),
         (
             f"guild members that chose [{GUILD_NAME}] as wvw guild "
