@@ -294,9 +294,19 @@ def main():
     logging.info("alliance guild name: %s", ALLIANCE_GUILD_NAME)
 
     gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
+    if not gw2mist_guild.profile["display_roster"]:
+        raise ValueError(
+            "Roster is disabled in guild settings on gw2mists.com "
+            f"for '{gw2mist_guild.guild_name}', not able to get members info"
+        )
     gw2mist_alliance = GW2MISTS_GUILD(ALLIANCE_GUILD_NAME)
-    logging_gw2mists_prefix = "gw2mists"
+    if not gw2mist_alliance.profile["display_roster"]:
+        raise ValueError(
+            "Roster is disabled in guild settings on gw2mists.com "
+            f"for '{gw2mist_alliance.guild_name}', not able to get members info"
+        )
 
+    logging_gw2mists_prefix = "gw2mists"
     logging.info(
         f"{logging_gw2mists_prefix}: total guild member number: %d",
         gw2mist_guild.profile["member_count"],
