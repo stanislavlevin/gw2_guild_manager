@@ -184,6 +184,56 @@ class GW2MISTS_GUILD:
         return self._top_week
 
 
+class GW2_API_KEY:
+    API_ENDPOINT = "https://api.guildwars2.com"
+    API_HEADERS = {
+        "accept": "application/json",
+    }
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.API_HEADERS["authorization"] =  f"Bearer {self.api_key}"
+        self._data = None
+
+    async def aapi_key(self):
+        api_key_url = f"{self.API_ENDPOINT}/v2/tokeninfo"
+        connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
+
+        async def status_check(response):
+            # override error message
+            if response.status == HTTPStatus.BAD_REQUEST:
+                response_json = await response.json()
+                if error_text := response_json.get("text"):
+                    response.reason = f"{response.reason}: {error_text}"
+            response.raise_for_status()
+
+        async with aiohttp.ClientSession(
+            connector=connector,
+            headers=self.API_HEADERS,
+            raise_for_status=status_check,
+        ) as session:
+            async with session.get(api_key_url) as response:
+                return await response.json()
+
+    @property
+    def data(self):
+        if self._data is None:
+            _raw_data = asyncio.run(self.aapi_key())
+            self._data = {
+                "key": self.api_key,
+                "permissions": _raw_data["permissions"],
+            }
+        return self._data
+
+    @property
+    def key(self):
+        return self.data["key"]
+
+    @property
+    def permissions(self):
+        return self.data["permissions"]
+
+
 class GW2_GUILD:
     API_ENDPOINT = "https://api.guildwars2.com"
     API_HEADERS = {
@@ -201,8 +251,16 @@ class GW2_GUILD:
                 "see settings.ini.in for details"
             )
         self.gid = config[self.guild_name]["gid"]
-        self.api_key = config[self.guild_name]["api_key"]
-        self.API_HEADERS["authorization"] =  f"Bearer {self.api_key}"
+        raw_key = config[self.guild_name]["api_key"]
+        api_key = GW2_API_KEY(raw_key)
+        # guilds - Grants access to guild info under the /v2/guild/:id/ sub-endpoints.
+        if not "guilds" in api_key.permissions:
+            raise ValueError(
+                f"the api key provided for guild '{self.guild_name}' "
+                "doesn't have 'guilds' permission among "
+                f"{', '.join(api_key.permissions)}"
+            )
+        self.API_HEADERS["authorization"] =  f"Bearer {api_key.key}"
         self._profile = None
         self._members = None
         self._wvw_members = None
