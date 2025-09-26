@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import aiohttp
 import configparser
@@ -24,6 +25,8 @@ MEMBER_STATS_LIST = (
     "defended_targets",
     "killed_dolyaks",
 )
+LOGGING_GW2MISTS_PREFIX = "gw2mists"
+LOGGING_GW2_PREFIX = "gw2"
 
 
 class GW2MISTS_GUILD:
@@ -342,11 +345,8 @@ def report_members_stats(prefix, *, stats):
         )
 
 
-def main():
-    now = datetime.now(UTC).isoformat()
-    logfile = f"report_{now}.log"
-    setup_logging(logfile)
-
+def report(args):
+    logging.info("report time: %s", datetime.now(UTC).isoformat())
     # read guild and alliance settings
     config = configparser.ConfigParser()
     config.read("settings.ini")
@@ -356,6 +356,11 @@ def main():
             "(see settings.ini.in for details)"
         )
     guild_settings = dict(config.items("guild"))
+    report_guild(guild_settings)
+    if args.skip_alliance_checks:
+        logger.info("skipping alliance checks")
+        logger.info("logfile to upload: %s", args.logfile)
+        return
 
     if "alliance" not in config:
         raise ValueError(
@@ -363,10 +368,12 @@ def main():
             "(see settings.ini.in for details)"
         )
     alliance_settings = dict(config.items("alliance"))
+    report_alliance(alliance_settings, guild_settings=guild_settings)
+    logger.info("logfile to upload: %s", args.logfile)
 
-    logging.info("report time: %s", now)
+
+def report_guild(guild_settings):
     logging.info("guild name: %s", guild_settings["name"])
-    logging.info("alliance guild name: %s", alliance_settings["name"])
 
     gw2mist_guild = GW2MISTS_GUILD(guild_settings["name"])
     if not gw2mist_guild.profile["display_roster"]:
@@ -374,16 +381,9 @@ def main():
             "Roster is disabled in guild settings on gw2mists.com "
             f"for '{gw2mist_guild.guild_name}', not able to get members info"
         )
-    gw2mist_alliance = GW2MISTS_GUILD(alliance_settings["name"])
-    if not gw2mist_alliance.profile["display_roster"]:
-        raise ValueError(
-            "Roster is disabled in guild settings on gw2mists.com "
-            f"for '{gw2mist_alliance.guild_name}', not able to get members info"
-        )
 
-    logging_gw2mists_prefix = "gw2mists"
     logging.info(
-        f"{logging_gw2mists_prefix}: total guild member number: %d",
+        f"{LOGGING_GW2MISTS_PREFIX}: total guild member number: %d",
         gw2mist_guild.profile["member_count"],
     )
 
@@ -398,6 +398,53 @@ def main():
             "during current match",
             set(f"{k} ({v['kills']})" for k, v in gw2mist_guild.inactive_members.items()),
         ),
+    ):
+        report_members(
+            LOGGING_GW2MISTS_PREFIX,
+            message=msg,
+            members=mbs,
+        )
+
+    gw2_guild = GW2_GUILD(
+        guild_settings["name"],
+        gid=guild_settings["gid"],
+        api_key=guild_settings["api_key"],
+    )
+    logging.info(
+        f"{LOGGING_GW2_PREFIX}: total guild member number: %d",
+        len(gw2_guild.members),
+    )
+
+    for msg, mbs in (
+        (
+            f"guild members that chose [{guild_settings['name']}] as wvw guild "
+            "instead of alliance",
+            gw2_guild.wvw_members,
+        ),
+    ):
+        report_members(
+            LOGGING_GW2_PREFIX,
+            message=msg,
+            members=mbs,
+        )
+
+    for msg, stats in (
+        (f"gw2mists: guild top {TOP_STATS_MEMBERS} members", gw2mist_guild.top_week),
+    ):
+        report_members_stats(msg, stats=stats)
+
+
+def report_alliance(alliance_settings, *, guild_settings):
+    logging.info("alliance guild name: %s", alliance_settings["name"])
+
+    gw2mist_alliance = GW2MISTS_GUILD(alliance_settings["name"])
+    if not gw2mist_alliance.profile["display_roster"]:
+        raise ValueError(
+            "Roster is disabled in guild settings on gw2mists.com "
+            f"for '{gw2mist_alliance.guild_name}', not able to get members info"
+        )
+
+    for msg, mbs in (
         (
             f"alliance members having less than {INACTIVE_PLAYER_KILLS} kills "
             "during current match",
@@ -405,21 +452,10 @@ def main():
         ),
     ):
         report_members(
-            logging_gw2mists_prefix,
+            LOGGING_GW2MISTS_PREFIX,
             message=msg,
             members=mbs,
         )
-
-    logging_gw2_prefix = "gw2"
-    gw2_guild = GW2_GUILD(
-        guild_settings["name"],
-        gid=guild_settings["gid"],
-        api_key=guild_settings["api_key"],
-    )
-    logging.info(
-        f"{logging_gw2_prefix}: total guild member number: %d",
-        len(gw2_guild.members),
-    )
 
     gw2_alliance = GW2_GUILD(
         alliance_settings["name"],
@@ -427,28 +463,20 @@ def main():
         api_key=alliance_settings["api_key"],
     )
     logging.info(
-        f"{logging_gw2_prefix}: total alliance member number: %d",
+        f"{LOGGING_GW2_PREFIX}: total alliance member number: %d",
         len(gw2_alliance.members),
     )
 
+    gw2_guild = GW2_GUILD(
+        guild_settings["name"],
+        gid=guild_settings["gid"],
+        api_key=guild_settings["api_key"],
+    )
 
     for msg, mbs in (
         (
-            "not registered guild members that didn't join alliance",
-            gw2mist_guild.unregistered_members-gw2_alliance.members,
-        ),
-        (
             "guild members that didn't join alliance",
-            gw2_not_alliance_members:=gw2_guild.members-gw2_alliance.members,
-        ),
-        (
-            "inactive guild members that didn't join alliance",
-            set(gw2mist_guild.inactive_members)&gw2_not_alliance_members,
-        ),
-        (
-            f"guild members that chose [{guild_settings['name']}] as wvw guild "
-            "instead of alliance",
-            gw2_guild.wvw_members,
+            gw2_guild.members-gw2_alliance.members,
         ),
         (
             "guild members that didn't choose alliance as wvw guild",
@@ -456,19 +484,49 @@ def main():
         ),
     ):
         report_members(
-            logging_gw2_prefix,
+            LOGGING_GW2_PREFIX,
             message=msg,
             members=mbs,
         )
 
     for msg, stats in (
-        (f"gw2mists: guild top {TOP_STATS_MEMBERS} members", gw2mist_guild.top_week),
         (f"gw2mists: alliance top {TOP_STATS_MEMBERS} members", gw2mist_alliance.top_week),
     ):
         report_members_stats(msg, stats=stats)
 
-    logger.info("logfile to upload: %s", logfile)
+
+def main_parser():
+    parser = argparse.ArgumentParser(description="report guild stats")
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
+    )
+
+    parser.add_argument(
+        "--logfile",
+        help="Logfile path",
+        default=f"report_{datetime.now(UTC).isoformat()}.log",
+    )
+
+    parser.add_argument(
+        "--skip-alliance-checks",
+        action="store_true",
+        help="Skip any checks related to alliance",
+    )
+
+    parser.set_defaults(main=report)
+    return parser
+
+
+def main(cli_args):
+    parser = main_parser()
+    args = parser.parse_args(cli_args)
+    setup_logging(args.logfile, verbose=args.verbose)
+    args.main(args)
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
