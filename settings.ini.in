@@ -1,4 +1,13 @@
-[my cool guild]
+[guild]
+name = my cool guild
+# id returned by https://wiki.guildwars2.com/wiki/API:2/guild/search
+gid =
+# gw2 API key (guild leader is required)
+# https://wiki.guildwars2.com/wiki/API:2/guild/:id/members
+api_key =
+
+[alliance]
+name = my cool alliance
 # id returned by https://wiki.guildwars2.com/wiki/API:2/guild/search
 gid =
 # gw2 API key (guild leader is required)

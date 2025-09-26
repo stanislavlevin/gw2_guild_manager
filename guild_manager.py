@@ -16,8 +16,6 @@ logger = logging.getLogger(Path(__file__).stem)
 # https://docs.aiohttp.org/en/stable/client_advanced.html#limiting-connection-pool-size
 # default: 100
 OPEN_CONNECTIONS_LIMIT = 50
-GUILD_NAME = "Dodge Right I Mean"
-ALLIANCE_GUILD_NAME = "Glub Glub Glub Glub Glub"
 INACTIVE_PLAYER_KILLS = 1000
 TOP_STATS_MEMBERS = 10
 MEMBER_STATS_LIST = (
@@ -240,27 +238,18 @@ class GW2_GUILD:
         "accept": "application/json",
     }
 
-    def __init__(self, guild_name):
-        self.guild_name = guild_name
-
-        config = configparser.ConfigParser()
-        config.read("settings.ini")
-        if self.guild_name not in config:
-            raise ValueError(
-                f"not configured guild: {self.guild_name}, "
-                "see settings.ini.in for details"
-            )
-        self.gid = config[self.guild_name]["gid"]
-        raw_key = config[self.guild_name]["api_key"]
-        api_key = GW2_API_KEY(raw_key)
+    def __init__(self, name, *, gid, api_key):
+        self.name = name
+        self.gid = gid
+        gw2_api_key = GW2_API_KEY(api_key)
         # guilds - Grants access to guild info under the /v2/guild/:id/ sub-endpoints.
-        if not "guilds" in api_key.permissions:
+        if not "guilds" in gw2_api_key.permissions:
             raise ValueError(
-                f"the api key provided for guild '{self.guild_name}' "
+                f"the api key provided for guild '{self.name}' "
                 "doesn't have 'guilds' permission among "
-                f"{', '.join(api_key.permissions)}"
+                f"{', '.join(gw2_api_key.permissions)}"
             )
-        self.API_HEADERS["authorization"] =  f"Bearer {api_key.key}"
+        self.API_HEADERS["authorization"] =  f"Bearer {gw2_api_key.key}"
         self._profile = None
         self._members = None
         self._wvw_members = None
@@ -357,17 +346,35 @@ def main():
     now = datetime.now(UTC).isoformat()
     logfile = f"report_{now}.log"
     setup_logging(logfile)
-    logging.info("report time: %s", now)
-    logging.info("guild name: %s", GUILD_NAME)
-    logging.info("alliance guild name: %s", ALLIANCE_GUILD_NAME)
 
-    gw2mist_guild = GW2MISTS_GUILD(GUILD_NAME)
+    # read guild and alliance settings
+    config = configparser.ConfigParser()
+    config.read("settings.ini")
+    if "guild" not in config:
+        raise ValueError(
+            "not configured guild in settings.ini "
+            "(see settings.ini.in for details)"
+        )
+    guild_settings = dict(config.items("guild"))
+
+    if "alliance" not in config:
+        raise ValueError(
+            "not configured alliance in settings.ini "
+            "(see settings.ini.in for details)"
+        )
+    alliance_settings = dict(config.items("alliance"))
+
+    logging.info("report time: %s", now)
+    logging.info("guild name: %s", guild_settings["name"])
+    logging.info("alliance guild name: %s", alliance_settings["name"])
+
+    gw2mist_guild = GW2MISTS_GUILD(guild_settings["name"])
     if not gw2mist_guild.profile["display_roster"]:
         raise ValueError(
             "Roster is disabled in guild settings on gw2mists.com "
             f"for '{gw2mist_guild.guild_name}', not able to get members info"
         )
-    gw2mist_alliance = GW2MISTS_GUILD(ALLIANCE_GUILD_NAME)
+    gw2mist_alliance = GW2MISTS_GUILD(alliance_settings["name"])
     if not gw2mist_alliance.profile["display_roster"]:
         raise ValueError(
             "Roster is disabled in guild settings on gw2mists.com "
@@ -404,13 +411,21 @@ def main():
         )
 
     logging_gw2_prefix = "gw2"
-    gw2_guild = GW2_GUILD(GUILD_NAME)
+    gw2_guild = GW2_GUILD(
+        guild_settings["name"],
+        gid=guild_settings["gid"],
+        api_key=guild_settings["api_key"],
+    )
     logging.info(
         f"{logging_gw2_prefix}: total guild member number: %d",
         len(gw2_guild.members),
     )
 
-    gw2_alliance = GW2_GUILD(ALLIANCE_GUILD_NAME)
+    gw2_alliance = GW2_GUILD(
+        alliance_settings["name"],
+        gid=alliance_settings["gid"],
+        api_key=alliance_settings["api_key"],
+    )
     logging.info(
         f"{logging_gw2_prefix}: total alliance member number: %d",
         len(gw2_alliance.members),
@@ -431,7 +446,7 @@ def main():
             set(gw2mist_guild.inactive_members)&gw2_not_alliance_members,
         ),
         (
-            f"guild members that chose [{GUILD_NAME}] as wvw guild "
+            f"guild members that chose [{guild_settings['name']}] as wvw guild "
             "instead of alliance",
             gw2_guild.wvw_members,
         ),
