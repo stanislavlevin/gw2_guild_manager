@@ -5,6 +5,7 @@ import copy
 import logging
 import sys
 from datetime import datetime, UTC
+from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import quote
 
@@ -209,10 +210,19 @@ class GW2_GUILD:
     async def aguild_profile(self):
         guild_profile_url = f"{self.API_ENDPOINT}/v2/guild/{self.gid}/members"
         connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
+
+        async def status_check(response):
+            # override error message
+            if response.status == HTTPStatus.BAD_REQUEST:
+                response_json = await response.json()
+                if error_text := response_json.get("text"):
+                    response.reason = f"{response.reason}: {error_text}"
+            response.raise_for_status()
+
         async with aiohttp.ClientSession(
             connector=connector,
             headers=self.API_HEADERS,
-            raise_for_status=True,
+            raise_for_status=status_check,
         ) as session:
             async with session.get(guild_profile_url) as response:
                 return await response.json()
