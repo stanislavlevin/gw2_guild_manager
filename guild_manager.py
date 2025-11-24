@@ -370,7 +370,7 @@ def report(args):
             "(see settings.ini.in for details)"
         )
     guild_settings = dict(config.items("guild"))
-    report_guild(guild_settings)
+    report_guild(guild_settings, gw2mists=True, gw2=True)
     if args.skip_alliance_checks:
         logger.info("skipping alliance checks")
         logger.info("logfile to upload: %s", args.logfile)
@@ -386,10 +386,15 @@ def report(args):
     logger.info("logfile to upload: %s", args.logfile)
 
 
-def report_guild(guild_settings):
-    logging.info("guild name: %s", guild_settings["name"])
-
-    gw2mist_guild = GW2MISTS_GUILD(guild_settings["name"])
+def report_guild_gw2mists(
+    guild_name,
+    *,
+    inactive=True,
+    stats=True,
+    not_registered=True,
+):
+    gw2mist_guild = GW2MISTS_GUILD(guild_name)
+    guild_tag = gw2mist_guild.profile["tag"]
     if not gw2mist_guild.profile["display_roster"]:
         raise ValueError(
             "Roster is disabled in guild settings on gw2mists.com "
@@ -397,28 +402,45 @@ def report_guild(guild_settings):
         )
 
     logging.info(
-        f"{LOGGING_GW2MISTS_PREFIX}: total guild member number: %d",
+        f"{LOGGING_GW2MISTS_PREFIX}: total %s member number: %d",
+        guild_tag,
         gw2mist_guild.profile["member_count"],
     )
 
-    for msg, mbs in (
-        (
-            "guild members not registered on gw2mists.com",
-            gw2mist_guild.unregistered_members,
-        ),
-        ("guild members on wrong team", gw2mist_guild.wrongteam_members),
-        (
-            f"guild members having less than {INACTIVE_PLAYER_KILLS} kills "
-            "during current match",
-            set(f"{k} ({v['kills']})" for k, v in gw2mist_guild.inactive_members.items()),
-        ),
-    ):
+    report_members(
+        LOGGING_GW2MISTS_PREFIX,
+        message=f"{guild_tag} members on wrong team",
+        members=gw2mist_guild.wrongteam_members,
+    )
+
+    if not_registered:
         report_members(
             LOGGING_GW2MISTS_PREFIX,
-            message=msg,
-            members=mbs,
+            message=f"{guild_tag} members not registered on gw2mists.com",
+            members=gw2mist_guild.unregistered_members,
         )
 
+    if inactive:
+        report_members(
+            LOGGING_GW2MISTS_PREFIX,
+            message=(
+                f"{guild_tag} members having less than "
+                f"{INACTIVE_PLAYER_KILLS} kills during current match"
+            ),
+            members=set(
+                f"{k} ({v['kills']})"
+                for k, v in gw2mist_guild.inactive_members.items()
+            ),
+        )
+
+    if stats:
+        report_members_stats(
+            f"gw2mists: {guild_tag} top {TOP_STATS_MEMBERS} members",
+            stats=gw2mist_guild.top_week,
+        )
+
+
+def report_guild_gw2(guild_settings):
     gw2_guild = GW2_GUILD(
         guild_settings["name"],
         gid=guild_settings["gid"],
@@ -442,34 +464,30 @@ def report_guild(guild_settings):
             members=mbs,
         )
 
-    for msg, stats in (
-        (f"gw2mists: guild top {TOP_STATS_MEMBERS} members", gw2mist_guild.top_week),
-    ):
-        report_members_stats(msg, stats=stats)
+
+def report_guild(guild_settings, *, gw2mists=True, gw2=True):
+    logging.info("guild name: %s", guild_settings["name"])
+    if gw2mists:
+        report_guild_gw2mists(
+            guild_settings["name"],
+            inactive=True,
+            stats=True,
+            not_registered=True,
+        )
+
+    if gw2:
+        report_guild_gw2(guild_settings)
 
 
 def report_alliance(alliance_settings, *, guild_settings):
     logging.info("alliance guild name: %s", alliance_settings["name"])
 
-    gw2mist_alliance = GW2MISTS_GUILD(alliance_settings["name"])
-    if not gw2mist_alliance.profile["display_roster"]:
-        raise ValueError(
-            "Roster is disabled in guild settings on gw2mists.com "
-            f"for '{gw2mist_alliance.guild_name}', not able to get members info"
-        )
-
-    for msg, mbs in (
-        (
-            f"alliance members having less than {INACTIVE_PLAYER_KILLS} kills "
-            "during current match",
-            set(f"{k} ({v['kills']})" for k, v in gw2mist_alliance.inactive_members.items()),
-        ),
-    ):
-        report_members(
-            LOGGING_GW2MISTS_PREFIX,
-            message=msg,
-            members=mbs,
-        )
+    report_guild_gw2mists(
+        alliance_settings["name"],
+        inactive=False,
+        stats=True,
+        not_registered=False,
+    )
 
     gw2_alliance = GW2_GUILD(
         alliance_settings["name"],
@@ -515,11 +533,6 @@ def report_alliance(alliance_settings, *, guild_settings):
             message=msg,
             members=mbs,
         )
-
-    for msg, stats in (
-        (f"gw2mists: alliance top {TOP_STATS_MEMBERS} members", gw2mist_alliance.top_week),
-    ):
-        report_members_stats(msg, stats=stats)
 
 
 def main_parser():
