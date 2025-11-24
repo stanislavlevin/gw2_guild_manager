@@ -5,6 +5,7 @@ import configparser
 import copy
 import logging
 import sys
+from collections import Counter
 from datetime import datetime, UTC
 from http import HTTPStatus
 from pathlib import Path
@@ -323,13 +324,26 @@ def setup_logging(logfile, *, verbose=False):
     )
 
 
-def report_members(prefix, *, message, members):
+def report_members(
+    prefix,
+    *,
+    message,
+    members,
+    level=logging.WARNING,
+    sort_members=True,
+):
     fmt = f"{prefix}: {message}: %d"
     if (len_members := len(members)):
-        logging.warning(
+        logger.log(
+            level,
             fmt + "\n%s",
             len_members,
-            "\n".join((f"-> {m}" for m in sorted(members))),
+            "\n".join(
+                (
+                    f"-> {m}"
+                    for m in (sorted(members) if sort_members else members)
+                )
+            ),
         )
     else:
         logging.info(fmt, len_members)
@@ -465,6 +479,19 @@ def report_alliance(alliance_settings, *, guild_settings):
     logging.info(
         f"{LOGGING_GW2_PREFIX}: total alliance member number: %d",
         len(gw2_alliance.members),
+    )
+
+    report_members(
+        LOGGING_GW2_PREFIX,
+        message="alliance ranks",
+        members=[
+            f"{g}: {n}"
+            for g, n in Counter(
+                p["rank"] for p in gw2_alliance.profile
+            ).most_common()
+        ],
+        level=logging.INFO,
+        sort_members=False,
     )
 
     gw2_guild = GW2_GUILD(
