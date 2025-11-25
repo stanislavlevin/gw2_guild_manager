@@ -255,11 +255,11 @@ class GW2_GUILD:
             )
         self.API_HEADERS["authorization"] =  f"Bearer {gw2_api_key.key}"
         self._profile = None
+        self._info = None
         self._members = None
         self._wvw_members = None
 
-    async def aguild_profile(self):
-        guild_profile_url = f"{self.API_ENDPOINT}/v2/guild/{self.gid}/members"
+    async def arequest(self, url):
         connector = aiohttp.TCPConnector(limit=OPEN_CONNECTIONS_LIMIT)
 
         async def status_check(response):
@@ -275,14 +275,30 @@ class GW2_GUILD:
             headers=self.API_HEADERS,
             raise_for_status=status_check,
         ) as session:
-            async with session.get(guild_profile_url) as response:
+            async with session.get(url) as response:
                 return await response.json()
 
     @property
     def profile(self):
         if self._profile is None:
-            self._profile = copy.deepcopy(asyncio.run(self.aguild_profile()))
+            self._profile = copy.deepcopy(
+                asyncio.run(
+                    self.arequest(
+                        f"{self.API_ENDPOINT}/v2/guild/{self.gid}/members",
+                    ),
+                )
+            )
         return self._profile
+
+    @property
+    def info(self):
+        if self._info is None:
+            self._info = copy.deepcopy(
+                asyncio.run(
+                    self.arequest(f"{self.API_ENDPOINT}/v2/guild/{self.gid}"),
+                )
+            )
+        return self._info
 
     @property
     def members(self):
@@ -482,14 +498,15 @@ def report_guild_gw2(guild_settings, *, alliance_settings=None):
         gid=guild_settings["gid"],
         api_key=guild_settings["api_key"],
     )
+    guild_tag = gw2_guild.info["tag"]
     logging.info(
-        f"{LOGGING_GW2_PREFIX}: guild members number: %d",
+        f"{LOGGING_GW2_PREFIX}: {guild_tag} members number: %d",
         len(gw2_guild.members),
     )
 
     for msg, mbs in (
         (
-            f"guild members that chose [{guild_settings['name']}] as wvw guild "
+            f"{guild_tag} members that chose [{guild_tag}] as wvw guild "
             "instead of alliance",
             gw2_guild.wvw_members,
         ),
@@ -509,14 +526,45 @@ def report_guild_gw2(guild_settings, *, alliance_settings=None):
         gid=alliance_settings["gid"],
         api_key=alliance_settings["api_key"],
     )
+
     for msg, mbs in (
         (
-            "guild members that didn't join alliance",
+            f"{guild_tag} members that didn't join alliance",
             gw2_guild.members-gw2_alliance.members,
         ),
         (
-            "guild members that didn't choose alliance as wvw guild",
+            f"{guild_tag} members that didn't choose alliance as wvw guild",
             gw2_guild.members-(gw2_guild.members&gw2_alliance.wvw_members),
+        ),
+        (
+            (
+                f"{guild_tag} members that don't have '{guild_tag}' or special "
+                "alliance rank"
+            ),
+            [
+                f"{p['name']}: {p['rank']}"
+                for m in gw2_guild.members & gw2_alliance.members
+                for p in gw2_alliance.profile
+                if (
+                    m == p["name"]
+                    and p["rank"].upper() not in (
+                        guild_tag.upper(),
+                        "OFFICER",
+                        "LEADER",
+                    )
+                )
+            ],
+        ),
+        (
+            f"NOT {guild_tag} members that have '{guild_tag}' alliance rank",
+            [
+                f"{p['name']}: {p['rank']}"
+                for p in gw2_alliance.profile
+                if (
+                    p["rank"].upper() == guild_tag.upper()
+                    and p["name"] not in gw2_guild.members & gw2_alliance.members
+                )
+            ],
         ),
     ):
         report_members(
