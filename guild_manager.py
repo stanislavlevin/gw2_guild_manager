@@ -256,6 +256,7 @@ class GW2_GUILD:
         self.API_HEADERS["authorization"] =  f"Bearer {gw2_api_key.key}"
         self._profile = None
         self._info = None
+        self._ranks = None
         self._members = None
         self._wvw_members = None
 
@@ -299,6 +300,21 @@ class GW2_GUILD:
                 )
             )
         return self._info
+
+    @property
+    def ranks(self):
+        """
+        https://wiki.guildwars2.com/wiki/API:2/guild/:id/ranks
+        """
+        if self._ranks is None:
+            self._ranks = copy.deepcopy(
+                asyncio.run(
+                    self.arequest(
+                        f"{self.API_ENDPOINT}/v2/guild/{self.gid}/ranks"
+                    ),
+                )
+            )
+        return self._ranks
 
     @property
     def members(self):
@@ -536,42 +552,62 @@ def report_guild_gw2(guild_settings, *, alliance_settings=None):
             f"{guild_tag} members that didn't choose alliance as wvw guild",
             gw2_guild.members-(gw2_guild.members&gw2_alliance.wvw_members),
         ),
-        (
-            (
-                f"{guild_tag} members that don't have '{guild_tag}' or special "
-                "alliance rank"
-            ),
-            [
-                f"{p['name']}: {p['rank']}"
-                for m in gw2_guild.members & gw2_alliance.members
-                for p in gw2_alliance.profile
-                if (
-                    m == p["name"]
-                    and p["rank"].upper() not in (
-                        guild_tag.upper(),
-                        "OFFICER",
-                        "LEADER",
-                    )
-                )
-            ],
-        ),
-        (
-            f"NOT {guild_tag} members that have '{guild_tag}' alliance rank",
-            [
-                f"{p['name']}: {p['rank']}"
-                for p in gw2_alliance.profile
-                if (
-                    p["rank"].upper() == guild_tag.upper()
-                    and p["name"] not in gw2_guild.members & gw2_alliance.members
-                )
-            ],
-        ),
     ):
         report_members(
             LOGGING_GW2_PREFIX,
             message=msg,
             members=mbs,
         )
+
+    gw2_alliance_rank_names = {r["id"].upper() for r in gw2_alliance.ranks}
+    if guild_tag.upper() not in gw2_alliance_rank_names:
+        logger.info(
+            f"missing guild tag ({guild_tag.upper()}) in alliance ranks: "
+            f"{gw2_alliance_rank_names}"
+        )
+    else:
+        for msg, mbs in (
+            (
+                (
+                    f"{guild_tag} members that don't have '{guild_tag}' or "
+                    "special alliance rank"
+                ),
+                [
+                    f"{p['name']}: {p['rank']}"
+                    for m in gw2_guild.members & gw2_alliance.members
+                    for p in gw2_alliance.profile
+                    if (
+                        m == p["name"]
+                        and p["rank"].upper() not in (
+                            guild_tag.upper(),
+                            "OFFICER",
+                            "LEADER",
+                        )
+                    )
+                ],
+            ),
+            (
+                (
+                    f"NOT {guild_tag} members that have '{guild_tag}' alliance "
+                    "rank"
+                ),
+                [
+                    f"{p['name']}: {p['rank']}"
+                    for p in gw2_alliance.profile
+                    if (
+                        p["rank"].upper() == guild_tag.upper()
+                        and p["name"] not in (
+                            gw2_guild.members & gw2_alliance.members
+                        )
+                    )
+                ],
+            ),
+        ):
+            report_members(
+                LOGGING_GW2_PREFIX,
+                message=msg,
+                members=mbs,
+            )
 
 
 def report_guild(
