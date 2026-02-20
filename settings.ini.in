@@ -6,10 +6,14 @@ gid =
 # https://wiki.guildwars2.com/wiki/API:2/guild/:id/members
 api_key =
 
+# missing '[alliance]' section of settings.ini means guild is not
+# in any alliance, some checks will be skipped
 [alliance]
 name = my cool alliance
 # id returned by https://wiki.guildwars2.com/wiki/API:2/guild/search
 gid =
 # gw2 API key (guild leader is required)
 # https://wiki.guildwars2.com/wiki/API:2/guild/:id/members
+# missing 'api_key' key in '[alliance]' section of settings.ini
+# means we don't know alliance leader api key, some checks will be skipped
 api_key =

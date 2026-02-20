@@ -428,6 +428,11 @@ def report(args, *, logfile):
                 "(see settings.ini.in for details)"
             )
         alliance_settings = dict(config.items("alliance"))
+        if "api_key" not in alliance_settings:
+            raise ValueError(
+                "not configured alliance leader api key in settings.ini "
+                "(see settings.ini.in for details)"
+            )
         report_alliance(alliance_settings)
 
     logger.info("report to upload: %s", logfile)
@@ -520,6 +525,24 @@ def report_guild_gw2(guild_settings, *, alliance_settings=None):
         len(gw2_guild.members),
     )
 
+    # guild is not in any alliance
+    if not alliance_settings:
+        for msg, mbs in (
+            (
+                (
+                    f"{guild_tag} members that didn't choose [{guild_tag}] as "
+                    "wvw guild"
+                ),
+                gw2_guild.members - gw2_guild.wvw_members,
+            ),
+        ):
+            report_members(
+                LOGGING_GW2_PREFIX,
+                message=msg,
+                members=mbs,
+            )
+        return
+
     for msg, mbs in (
         (
             f"{guild_tag} members that chose [{guild_tag}] as wvw guild "
@@ -533,7 +556,8 @@ def report_guild_gw2(guild_settings, *, alliance_settings=None):
             members=mbs,
         )
 
-    if not alliance_settings:
+    # don't have alliance leader key
+    if "api_key" not in alliance_settings:
         return
 
     # requires alliance leader key
